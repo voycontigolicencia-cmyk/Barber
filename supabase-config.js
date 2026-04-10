@@ -5,17 +5,21 @@
    ⚠️ INSTRUCCIONES:
    1. Ve a https://supabase.com/dashboard → tu proyecto → Settings → API
    2. Copia la URL del proyecto y la anon key
-   3. Reemplaza los valores abajo
+   3. Reemplaza los valores abajo MANTENIENDO LAS COMILLAS
+   
+   ⚠️ IMPORTANTE: Los valores van ENTRE COMILLAS SIMPLES:
+      ✅ CORRECTO:  const ADMIN_TOKEN = 'micontraseña123';
+      ❌ INCORRECTO: const ADMIN_TOKEN = micontraseña123;
    ================================================================ */
 
 // ══════════════════════════════════════════════════════════════════
 // CONFIGURACIÓN SUPABASE
 // ══════════════════════════════════════════════════════════════════
 
-const SUPABASE_URL = 'https://znitsnhfesbapyobcwvo.supabase.co';  // ← Reemplaza
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpuaXRzbmhmZXNiYXB5b2Jjd3ZvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU4NDAyNzgsImV4cCI6MjA5MTQxNjI3OH0.ThKUoM5ojRzINh_ItH7Mvp-sBb8on--xG8iCTDgTLK0';  // ← Reemplaza con tu anon key
+const SUPABASE_URL = 'https://znitsnhfesbapyobcwvo.supabase.co';  // ← Reemplaza (mantén las comillas)
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpuaXRzbmhmZXNiYXB5b2Jjd3ZvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU4NDAyNzgsImV4cCI6MjA5MTQxNjI3OH0.ThKUoM5ojRzINh_ItH7Mvp-sBb8on--xG8iCTDgTLK0;  // ← Reemplaza con tu anon key (mantén las comillas)
 
-// Token para acciones admin (debe coincidir con el que configures en Edge Functions)
+// Token para acciones admin (cámbialo por algo secreto, ENTRE COMILLAS)
 const ADMIN_TOKEN = 'barberia-pro-2025-secret';
 
 // ══════════════════════════════════════════════════════════════════
@@ -24,15 +28,15 @@ const ADMIN_TOKEN = 'barberia-pro-2025-secret';
 
 const CONFIG = {
   nombre:     'Barbería Pro',
-  email:      'from: 'voycontigo.licencia@gmail.com',
-  telefono:   '+56 9 1234 5678',
+  email:      'voycontigo.licencia@gmail.com',
+  telefono:   '+56 9 3661 6271',
   direccion:  'Calle Ejemplo 123, Santiago',
   horario:    'Lun–Sáb: 9:00 – 20:00',
-  whatsapp:   'https://wa.me/56999849782',
+  whatsapp:   'https://wa.me/56912345678',
   instagram:  'https://instagram.com/barberiapro',
-  mapsUrl:    'https://maps.app.goo.gl/X8NGgKR6uAugzBLp7',
-  lat:        -33.4549403,
-  lng:        -70.5816914,
+  mapsUrl:    'https://maps.app.goo.gl/TU_LINK',
+  lat:        -33.4569,
+  lng:        -70.6483,
   timezone:   'America/Santiago',
   
   // Horarios del negocio
@@ -187,7 +191,8 @@ const API = {
           horario.hora_inicio,
           horario.hora_fin,
           servicio.duracion,
-          reservasEmp
+          reservasEmp,
+          fecha  // ← Pasar fecha para filtrar horas pasadas
         );
         
         resultado[emp.id] = {
@@ -206,10 +211,17 @@ const API = {
   },
   
   // Calcular slots disponibles
-  _calcularSlots(horaInicio, horaFin, duracionServicio, reservas) {
+  // fecha: string 'YYYY-MM-DD' para filtrar horas pasadas si es hoy
+  _calcularSlots(horaInicio, horaFin, duracionServicio, reservas, fecha) {
     const slots = [];
     const inicio = this._horaAMinutos(horaInicio);
     const fin = this._horaAMinutos(horaFin);
+    
+    // Calcular hora actual si es hoy (para filtrar slots pasados)
+    const ahora = new Date();
+    const hoyStr = ahora.toISOString().split('T')[0];
+    const esHoy = fecha === hoyStr;
+    const minutosAhora = esHoy ? (ahora.getHours() * 60 + ahora.getMinutes()) : 0;
     
     for (let mins = inicio; mins < fin; mins += CONFIG.slotMinutos) {
       const slotInicio = this._minutosAHora(mins);
@@ -217,6 +229,17 @@ const API = {
       
       // Verificar que el slot cabe en el horario
       if (mins + duracionServicio > fin) break;
+      
+      // ⏰ BUG FIX: Si es hoy, filtrar horas que ya pasaron
+      if (esHoy && mins <= minutosAhora) {
+        slots.push({
+          horaInicio: slotInicio,
+          horaFin: slotFin,
+          disponible: false,
+          pasado: true
+        });
+        continue;
+      }
       
       // Verificar conflictos con reservas existentes
       const libre = !reservas.some(r => {
@@ -277,15 +300,26 @@ const API = {
         this._horaAMinutos(payload.horaInicio) + servicio.duracion
       );
       
-      const { data: conflictos } = await db
+      // BUG FIX: Traer todas las reservas del día y verificar solapamiento en JS
+      // La sintaxis OR de Supabase no funciona bien para rangos
+      const { data: reservasDelDia } = await db
         .from('reservas')
-        .select('id')
+        .select('id, hora_inicio, hora_fin')
         .eq('empleado_id', payload.empleadoID)
         .eq('fecha', payload.fecha)
-        .neq('estado', ESTADOS.CANCELADA)
-        .or(`hora_inicio.lt.${horaFin},hora_fin.gt.${payload.horaInicio}`);
+        .neq('estado', ESTADOS.CANCELADA);
       
-      if (conflictos && conflictos.length > 0) {
+      // Verificar solapamiento: A empieza antes de que B termine Y A termina después de que B empiece
+      const nuevaInicio = this._horaAMinutos(payload.horaInicio);
+      const nuevaFin = this._horaAMinutos(horaFin);
+      
+      const hayConflicto = (reservasDelDia || []).some(r => {
+        const existeInicio = this._horaAMinutos(r.hora_inicio);
+        const existeFin = this._horaAMinutos(r.hora_fin);
+        return nuevaInicio < existeFin && nuevaFin > existeInicio;
+      });
+      
+      if (hayConflicto) {
         return { ok: false, error: 'El horario ya no está disponible. Elige otro.' };
       }
       
