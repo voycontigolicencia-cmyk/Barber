@@ -17,7 +17,7 @@
 // ══════════════════════════════════════════════════════════════════
 
 const SUPABASE_URL = 'https://znitsnhfesbapyobcwvo.supabase.co';  // ← Reemplaza (mantén las comillas)
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpuaXRzbmhmZXNiYXB5b2Jjd3ZvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU4NDAyNzgsImV4cCI6MjA5MTQxNjI3OH0.ThKUoM5ojRzINh_ItH7Mvp-sBb8on--xG8iCTDgTLK0;  // ← Reemplaza con tu anon key (mantén las comillas)
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpuaXRzbmhmZXNiYXB5b2Jjd3ZvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU4NDAyNzgsImV4cCI6MjA5MTQxNjI3OH0.ThKUoM5ojRzINh_ItH7Mvp-sBb8on--xG8iCTDgTLK0';  // ← Reemplaza con tu anon key (mantén las comillas)
 
 // Token para acciones admin (cámbialo por algo secreto, ENTRE COMILLAS)
 const ADMIN_TOKEN = 'barberia-pro-2025-secret';
