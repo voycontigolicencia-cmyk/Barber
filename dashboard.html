@@ -7,7 +7,10 @@
 <title>Dashboard — Barbería Pro</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css">
+<link rel="stylesheet" href="styles.css">
+
+<!-- Supabase SDK -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <style>
 /* ── Reportes panel ── */
@@ -73,7 +76,7 @@
       <span class="nav-link" onclick="cargarDashboard()">🏠 Dashboard</span>
       <span class="nav-link" onclick="mostrarSeccion('agenda')">📅 Agenda</span>
       <span class="nav-link" onclick="mostrarSeccion('reservas')">📋 Reservas</span>
-      <span class="nav-link" onclick="mostrarSeccion('reportes')">📊 Reportes</span>
+      <a class="nav-link" href="index.html">🌐 Sitio</a>
       <span class="nav-link" onclick="cerrarSesion()" style="color:var(--danger)">Salir</span>
     </div>
   </nav>
@@ -165,65 +168,6 @@
       </div>
     </div>
 
-    <!-- ════════════════════════════════════════════════════════
-         SECCIÓN REPORTES (nueva en v2)
-         ════════════════════════════════════════════════════════ -->
-    <div id="seccion-reportes" class="dash-section" style="margin-top:24px">
-      <div class="dash-section-titulo">📊 Reportes de Ventas</div>
-
-      <!-- Tabs -->
-      <div class="reportes-tabs">
-        <button class="tab-btn active" onclick="activarTab('diario')">📅 Diario</button>
-        <button class="tab-btn"        onclick="activarTab('semanal')">📈 Semanal</button>
-        <button class="tab-btn"        onclick="activarTab('mensual')">📆 Mensual</button>
-      </div>
-
-      <!-- Panel Diario -->
-      <div class="reporte-panel active" id="tab-diario">
-        <div class="reporte-kpis" id="kpis-diario"></div>
-        <div class="reporte-grid">
-          <div>
-            <div style="font-size:13px;font-weight:600;color:var(--muted);margin-bottom:12px">Por servicio</div>
-            <div class="bar-chart" id="bar-diario-srv"></div>
-          </div>
-          <div>
-            <div style="font-size:13px;font-weight:600;color:var(--muted);margin-bottom:12px">Por barbero</div>
-            <div class="bar-chart" id="bar-diario-barbero"></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Panel Semanal -->
-      <div class="reporte-panel" id="tab-semanal">
-        <div class="reporte-kpis" id="kpis-semanal"></div>
-        <div class="reporte-grid">
-          <div>
-            <div style="font-size:13px;font-weight:600;color:var(--muted);margin-bottom:12px">Por servicio</div>
-            <div class="bar-chart" id="bar-semanal-srv"></div>
-          </div>
-          <div>
-            <div style="font-size:13px;font-weight:600;color:var(--muted);margin-bottom:12px">Por barbero</div>
-            <div class="bar-chart" id="bar-semanal-barbero"></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Panel Mensual -->
-      <div class="reporte-panel" id="tab-mensual">
-        <div class="reporte-kpis" id="kpis-mensual"></div>
-        <div class="reporte-grid">
-          <div>
-            <div style="font-size:13px;font-weight:600;color:var(--muted);margin-bottom:12px">Por servicio</div>
-            <div class="bar-chart" id="bar-mensual-srv"></div>
-          </div>
-          <div>
-            <div style="font-size:13px;font-weight:600;color:var(--muted);margin-bottom:12px">Por barbero</div>
-            <div class="bar-chart" id="bar-mensual-barbero"></div>
-          </div>
-        </div>
-      </div>
-    </div>
-
   </div><!-- /dash-layout -->
 </div><!-- /dash-screen -->
 
@@ -238,11 +182,13 @@
   </div>
 </div>
 
-<script src="js/api.js"></script>
-<script src="js/calendar.js"></script>
+<!-- Supabase Config -->
+<script src="supabase-config.js"></script>
+<script src="calendar.js"></script>
+
 <script>
 /* ================================================================
-   DASHBOARD — Lógica admin  (v2)
+   DASHBOARD — Lógica admin (Migrado a Supabase)
    ================================================================ */
 
 let dashState = {
@@ -252,38 +198,37 @@ let dashState = {
 };
 
 // ── AUTENTICACIÓN ─────────────────────────────────────────────
+// Usa el ADMIN_TOKEN definido en supabase-config.js
 async function iniciarSesion() {
   const pwd = document.getElementById('login-pwd').value.trim();
   if (!pwd) return;
-  mostrarLoader(true, 'Verificando…');
-  try {
-    const res = await apiAdmin('validarAdmin', { token: pwd });
-    mostrarLoader(false);
-    if (res.ok && res.esAdmin) {
-      sessionStorage.setItem('barberia_token', pwd);
-      window.API_TOKEN = pwd;
-      dashState.autenticado = true;
-      mostrarDashboard();
-    } else {
-      document.getElementById('login-error').style.display = 'block';
-    }
-  } catch(e) {
-    mostrarLoader(false);
-    mostrarError('Error de conexión.');
+  
+  // Verificar contra el token configurado
+  if (pwd === ADMIN_TOKEN) {
+    sessionStorage.setItem('barberia_admin', 'true');
+    dashState.autenticado = true;
+    mostrarDashboard();
+  } else {
+    document.getElementById('login-error').style.display = 'block';
   }
 }
 
 function cerrarSesion() {
-  sessionStorage.removeItem('barberia_token');
+  sessionStorage.removeItem('barberia_admin');
   dashState.autenticado = false;
   document.getElementById('dash-screen').style.display  = 'none';
   document.getElementById('login-screen').style.display = 'flex';
 }
 
 window.addEventListener('DOMContentLoaded', () => {
-  const token = sessionStorage.getItem('barberia_token');
-  if (token) {
-    window.API_TOKEN = token;
+  // Verificar si CONFIG está disponible
+  if (typeof CONFIG === 'undefined') {
+    console.error('CONFIG no disponible');
+    return;
+  }
+  
+  const isAdmin = sessionStorage.getItem('barberia_admin');
+  if (isAdmin) {
     dashState.autenticado = true;
     mostrarDashboard();
   }
@@ -305,7 +250,7 @@ async function cargarDashboard() {
 
   mostrarLoader(true, 'Cargando dashboard…');
   try {
-    const data = await apiAdmin('getDashboard', {});
+    const data = await API.getDashboard();
     dashState.data = data;
     mostrarLoader(false);
 
@@ -316,13 +261,9 @@ async function cargarDashboard() {
     renderAgendaDia('agenda-dia', data.reservasHoy, data.empleados);
     renderProximas(data.proximas);
 
-    // Reportes (nuevo en v2)
-    if (data.reporteDiario)  renderReporte('diario',  data.reporteDiario);
-    if (data.reporteSemanal) renderReporte('semanal', data.reporteSemanal);
-    if (data.reporteMensual) renderReporte('mensual', data.reporteMensual);
-
   } catch(e) {
     mostrarLoader(false);
+    console.error('Error cargando dashboard:', e);
     mostrarError('Error de conexión.');
   }
 }
@@ -332,7 +273,7 @@ async function cambiarFecha(fecha) {
   document.getElementById('dash-fecha-hoy').textContent = _formatFechaLarga(fecha);
   mostrarLoader(true, 'Cargando reservas…');
   try {
-    const reservas = await apiAdmin('getReservasPorDia', { params:{ fecha } });
+    const reservas = await API.getReservasPorDia(fecha);
     mostrarLoader(false);
     renderTablaReservas(reservas);
     if (dashState.data) renderAgendaDia('agenda-dia', reservas, dashState.data.empleados);
@@ -366,7 +307,7 @@ function renderTablaReservas(reservas) {
         <div style="font-weight:600;font-size:13px">${r.nombre}</div>
         <div style="font-size:11px;color:var(--muted)">${r.email}</div>
       </td>
-      <td style="font-size:13px">${r.servicioNombre}${r.sesionNum>1?' (S'+r.sesionNum+'/'+r.sesionesTotales+')':''}</td>
+      <td style="font-size:13px">${r.servicioNombre}</td>
       <td style="font-size:13px">${r.empleadoNombre}</td>
       <td style="font-size:13px;white-space:nowrap">${r.horaInicio} — ${r.horaFin}</td>
       <td><span class="badge badge--${r.estado.toLowerCase()}">${r.estado}</span></td>
@@ -405,79 +346,11 @@ function renderProximas(proximas) {
   `).join('');
 }
 
-// ── RENDER REPORTES (nuevo en v2) ─────────────────────────────
-function renderReporte(periodo, rep) {
-  // KPIs
-  const kpisEl = document.getElementById('kpis-' + periodo);
-  if (kpisEl) {
-    const tasaCancelacion = rep.totalReservas
-      ? Math.round(rep.canceladas / rep.totalReservas * 100)
-      : 0;
-    kpisEl.innerHTML = `
-      <div class="reporte-kpi">
-        <div class="val">${rep.totalReservas}</div>
-        <div class="lbl">Reservas</div>
-      </div>
-      <div class="reporte-kpi">
-        <div class="val">$${(rep.totalIngresos||0).toLocaleString('es-CL')}</div>
-        <div class="lbl">Ingresos</div>
-      </div>
-      <div class="reporte-kpi">
-        <div class="val">${rep.completadas}</div>
-        <div class="lbl">Completadas</div>
-      </div>
-      <div class="reporte-kpi">
-        <div class="val">${tasaCancelacion}%</div>
-        <div class="lbl">Cancelación</div>
-      </div>
-    `;
-  }
-
-  // Barras por servicio
-  _renderBarras('bar-' + periodo + '-srv', rep.porServicio, rep.totalIngresos);
-  // Barras por barbero
-  _renderBarras('bar-' + periodo + '-barbero', rep.porBarbero, rep.totalIngresos);
-}
-
-function _renderBarras(elId, datos, maxTotal) {
-  const el = document.getElementById(elId);
-  if (!el) return;
-  if (!datos || !datos.length) {
-    el.innerHTML = '<p style="color:var(--hint);font-size:13px">Sin datos</p>';
-    return;
-  }
-  const maxVal = datos[0] ? datos[0].total : 1;
-  el.innerHTML = datos.slice(0, 6).map(function(item) {
-    const pct = maxVal > 0 ? Math.round(item.total / maxVal * 100) : 0;
-    return `
-      <div class="bar-item">
-        <span class="bar-label" title="${item.nombre}">${item.nombre}</span>
-        <div class="bar-track">
-          <div class="bar-fill" style="width:${pct}%"></div>
-        </div>
-        <span class="bar-val">$${(item.total||0).toLocaleString('es-CL')}</span>
-      </div>
-    `;
-  }).join('');
-}
-
-// ── TABS ──────────────────────────────────────────────────────
-function activarTab(periodo) {
-  document.querySelectorAll('.tab-btn').forEach(function(b) {
-    b.classList.toggle('active', b.textContent.toLowerCase().includes(periodo.slice(0,3)));
-  });
-  document.querySelectorAll('.reporte-panel').forEach(function(p) {
-    p.classList.remove('active');
-  });
-  const panel = document.getElementById('tab-' + periodo);
-  if (panel) panel.classList.add('active');
-}
-
 // ── ACCIONES ──────────────────────────────────────────────────
 async function cancelarReservaAdmin(reservaID) {
   if (!confirm('¿Cancelar la reserva ' + reservaID + '?')) return;
   mostrarLoader(true, 'Cancelando…');
-  const res = await apiAdmin('cancelarReserva', { reservaID, canceladoPor:'admin' });
+  const res = await API.cancelarAdmin(reservaID);
   mostrarLoader(false);
   if (res.ok) { mostrarExito('Reserva cancelada.'); await cargarDashboard(); }
   else mostrarError(res.error || 'Error al cancelar.');
@@ -485,7 +358,7 @@ async function cancelarReservaAdmin(reservaID) {
 
 async function completarReserva(reservaID) {
   mostrarLoader(true, 'Actualizando…');
-  const res = await apiAdmin('actualizarEstado', { params:{ reservaID, estado:'Completada' } });
+  const res = await API.actualizarEstado(reservaID, 'Completada');
   mostrarLoader(false);
   if (res.ok) { mostrarExito('Reserva marcada como completada.'); await cargarDashboard(); }
   else mostrarError('Error al actualizar.');
@@ -509,7 +382,6 @@ function verDetalle(reservaID) {
       <div class="modal-res-item"><span>Hora</span><strong>${r.horaInicio} — ${r.horaFin}</strong></div>
       <div class="modal-res-item"><span>Duración</span><strong>${r.duracion} min</strong></div>
       <div class="modal-res-item"><span>Precio</span><strong style="color:var(--gold-lt)">$${(r.precio||0).toLocaleString('es-CL')}</strong></div>
-      ${r.sesionNum > 1 ? `<div class="modal-res-item"><span>Sesión</span><strong>${r.sesionNum} de ${r.sesionesTotales}</strong></div>` : ''}
     </div>
     ${r.notas ? `<div style="background:var(--card2);padding:12px;border-radius:8px;font-size:13px;margin-top:12px"><strong style="color:var(--muted)">Notas:</strong> ${r.notas}</div>` : ''}
     <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap">
@@ -524,7 +396,7 @@ function cerrarModalDetalle() {
   document.getElementById('modal-detalle').classList.remove('open');
 }
 
-document.getElementById('modal-detalle').addEventListener('click', function(e) {
+document.getElementById('modal-detalle')?.addEventListener('click', function(e) {
   if (e.target === this) cerrarModalDetalle();
 });
 
@@ -549,8 +421,7 @@ function exportarCSV() {
 function mostrarSeccion(seccion) {
   const mapa = {
     agenda:   'seccion-agenda',
-    reservas: 'seccion-reservas',
-    reportes: 'seccion-reportes'
+    reservas: 'seccion-reservas'
   };
   const el = document.getElementById(mapa[seccion]);
   if (el) el.scrollIntoView({ behavior:'smooth' });
