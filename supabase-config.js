@@ -24,7 +24,7 @@ const ADMIN_TOKEN = 'barberia-pro-2025-secret';
 
 const CONFIG = {
   nombre:     'Barbería Pro',
-  email:      'admin@barberiapro.cl',
+  email:      'from: 'onboarding@resend.dev'',
   telefono:   '+56 9 1234 5678',
   direccion:  'Calle Ejemplo 123, Santiago',
   horario:    'Lun–Sáb: 9:00 – 20:00',
