@@ -1,5 +1,6 @@
 /* ================================================================
-   BARBERÍA PRO — js/app.js  (v2 — fixes selección + logo)
+   BARBERÍA PRO — app.js (Migrado a Supabase)
+   Lógica principal del frontend de reservas
    ================================================================ */
 
 const state = {
@@ -13,36 +14,50 @@ const state = {
 
 // ── INIT ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
+  // Verificar que API está disponible
+  if (typeof API === 'undefined') {
+    console.error('❌ API no disponible. Verifica supabase-config.js');
+    mostrarError('Error de configuración. Recarga la página.');
+    return;
+  }
+
   aplicarLogo();
   mostrarLoader(true, 'Cargando servicios…');
+  
   try {
-    const [srv, emp] = await Promise.all([API.getServicios(), API.getEmpleados()]);
+    const [srv, emp] = await Promise.all([
+      API.getServicios(), 
+      API.getEmpleados()
+    ]);
     state.servicios = Array.isArray(srv) ? srv : [];
     state.empleados = Array.isArray(emp) ? emp : [];
     renderServicios();
     renderEmpleadosFiltro();
+    console.log('✅ Datos cargados:', state.servicios.length, 'servicios,', state.empleados.length, 'empleados');
   } catch(e) {
+    console.error('Error cargando datos:', e);
     mostrarError('Error al cargar datos. Recarga la página.');
   } finally {
     mostrarLoader(false);
   }
+  
   renderCalendario('calendario');
   escucharEventos();
 });
 
 // ── LOGO ──────────────────────────────────────────────────────
 function aplicarLogo() {
-  if (!LOGO_URL) return;
-  // Navbar
+  if (typeof CONFIG === 'undefined' || !CONFIG.logoUrl) return;
+  
   const navLogo = document.getElementById('nav-logo');
   if (navLogo) {
-    navLogo.innerHTML = `<img src="${LOGO_URL}" alt="${NEGOCIO_NOMBRE}"
+    navLogo.innerHTML = `<img src="${CONFIG.logoUrl}" alt="${CONFIG.nombre}"
       style="height:38px;width:38px;border-radius:50%;object-fit:cover;border:2px solid var(--gold)">`;
   }
-  // Sidebar info y footer
+  
   ['sidebar-logo','footer-logo'].forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.innerHTML = `<img src="${LOGO_URL}" alt="${NEGOCIO_NOMBRE}"
+    if (el) el.innerHTML = `<img src="${CONFIG.logoUrl}" alt="${CONFIG.nombre}"
       style="height:52px;border-radius:10px;object-fit:contain">`;
   });
 }
@@ -99,24 +114,19 @@ function renderServicios() {
   cont.innerHTML = html;
 }
 
-// FIX: función de selección reescrita — actualiza estado y re-renderiza todo
 function seleccionarServicio(servicioID) {
   const srv = state.servicios.find(s => s.id === servicioID);
   if (!srv) return;
 
   state.servicioSel = srv;
-  state.slotSel     = null; // resetear slot al cambiar servicio
+  state.slotSel     = null;
 
-  // Re-renderizar tarjetas para mostrar el check correcto
   renderServicios();
 
-  // Si ya hay fecha seleccionada, cargar disponibilidad
   if (state.fechaSel) cargarDisponibilidad();
 
-  // Actualizar resumen lateral
   actualizarResumen();
 
-  // Scroll suave al paso de fecha
   document.getElementById('paso-fecha')
     ?.scrollIntoView({ behavior:'smooth', block:'start' });
 }
@@ -154,6 +164,7 @@ async function cargarDisponibilidad() {
     state.disponibilidad = (data && data.empleados) ? data.empleados : {};
     renderSlotsActuales();
   } catch(e) {
+    console.error('Error cargando disponibilidad:', e);
     mostrarError('Error al cargar disponibilidad.');
     state.disponibilidad = {};
     renderSlotsActuales();
@@ -195,7 +206,7 @@ function escucharEventos() {
   });
 }
 
-// ── RESUMEN LATERAL — FIX: botón aparece cuando hay servicio+fecha+slot ──
+// ── RESUMEN LATERAL ───────────────────────────────────────────
 function actualizarResumen() {
   const el = document.getElementById('resumen-seleccion');
   if (!el) return;
@@ -224,7 +235,6 @@ function actualizarResumen() {
 
   html += '</div>';
 
-  // FIX: mostrar botón cuando hay servicio + fecha + slot seleccionados
   if (state.servicioSel && state.fechaSel && state.slotSel) {
     html += `<button class="btn-reservar" onclick="abrirModalReserva()">
       Confirmar Reserva →
@@ -263,7 +273,6 @@ function abrirModalReserva() {
     sesionGroup.style.display = 'none';
   }
 
-  // Limpiar formulario
   ['inp-nombre','inp-email','inp-tel','inp-notas'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
@@ -276,7 +285,6 @@ function cerrarModal() {
   document.getElementById('modal-reserva').classList.remove('open');
 }
 
-// Cerrar modal al hacer click fuera
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('modal-reserva')?.addEventListener('click', function(e) {
     if (e.target === this) cerrarModal();
@@ -295,7 +303,8 @@ async function confirmarReserva() {
   if (!email  || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { mostrarError('Email inválido.'); return; }
 
   const payload = {
-    nombre, email,
+    nombre, 
+    email,
     telefono:   tel || '',
     servicioID: state.servicioSel.id,
     empleadoID: state.slotSel.empleadoID,
@@ -313,13 +322,13 @@ async function confirmarReserva() {
     if (res.ok) {
       cerrarModal();
       mostrarConfirmacion(res.reservaID, res.reserva);
-      // Recargar disponibilidad para bloquear el slot
       cargarDisponibilidad();
     } else {
       mostrarError(res.error || 'Error al crear la reserva. Intenta de nuevo.');
     }
   } catch(e) {
     mostrarLoader(false);
+    console.error('Error creando reserva:', e);
     mostrarError('Error de conexión. Intenta de nuevo.');
   }
 }
@@ -349,7 +358,6 @@ function nuevaReserva() {
   if (reservasScreen) reservasScreen.style.display = 'block';
   if (confScreen)     confScreen.style.display = 'none';
 
-  // Reset estado
   state.slotSel    = null;
   state.fechaSel   = null;
   state.servicioSel= null;
@@ -384,3 +392,4 @@ function _formatFecha(str) {
   const f = new Date(str + 'T12:00:00');
   return `${dias[f.getDay()]} ${f.getDate()} de ${meses[f.getMonth()]} ${f.getFullYear()}`;
 }
+
