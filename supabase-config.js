@@ -24,15 +24,15 @@ const ADMIN_TOKEN = 'barberia-pro-2025-secret';
 
 const CONFIG = {
   nombre:     'Barbería Pro',
-  email:      'from: 'anything@chaukul.resend.app',
+  email:      'from: 'voycontigo.licencia@gmail.com',
   telefono:   '+56 9 1234 5678',
   direccion:  'Calle Ejemplo 123, Santiago',
   horario:    'Lun–Sáb: 9:00 – 20:00',
-  whatsapp:   'https://wa.me/56912345678',
+  whatsapp:   'https://wa.me/56999849782',
   instagram:  'https://instagram.com/barberiapro',
-  mapsUrl:    'https://maps.app.goo.gl/TU_LINK',
-  lat:        -33.4569,
-  lng:        -70.6483,
+  mapsUrl:    'https://maps.app.goo.gl/X8NGgKR6uAugzBLp7',
+  lat:        -33.4549403,
+  lng:        -70.5816914,
   timezone:   'America/Santiago',
   
   // Horarios del negocio
