@@ -61,6 +61,21 @@
 
 <title>Barbería Pro — Reservas Online</title>
 ```
+<!-- SDK de Supabase -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<!-- Configuración de la Conexión -->
+<script>
+  // Reemplaza con tus credenciales de Supabase (las encuentras en Project Settings > API)
+  const SUPABASE_URL = 'https://zbwtbnmtdcofxkpmoiiv.supabase.co'
+  const SUPABASE_KEY = 'sb_publishable_SV62XGQktjwyVx8MoUZcpA_bRyoFuVP'
+
+  // Inicializamos el cliente
+  const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
+
+  // Prueba rápida para ver si funciona en la consola del navegador
+  console.log("Supabase cargado:", supabase)
+</script>
 
 </head>
 <body>
