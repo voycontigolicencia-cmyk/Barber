@@ -1,77 +1,41 @@
 /* ================================================================
-   BARBERÍA PRO — supabase-config.js
-   Configuración y cliente de Supabase
+   PLATAFORMA AGENDA — supabase-client.js (v2)
    
-   ⚠️ INSTRUCCIONES:
-   1. Ve a https://supabase.com/dashboard → tu proyecto → Settings → API
-   2. Copia la URL del proyecto y la anon key
-   3. Reemplaza los valores abajo MANTENIENDO LAS COMILLAS
+   Cliente Supabase + capa API. Lee de window.TENANT.
    
-   ⚠️ IMPORTANTE: Los valores van ENTRE COMILLAS SIMPLES:
-      ✅ CORRECTO:  const ADMIN_TOKEN = 'micontraseña123';
-      ❌ INCORRECTO: const ADMIN_TOKEN = micontraseña123;
+   Cambios v2 vs v1:
+   · Sin secretos del Edge Function (notificaciones eliminadas)
+   · Tras crearReserva, dispara fetch al Apps Script Web App en
+     modo híbrido (rápido para el cliente + retry en background)
+   · Soporte para todos los nuevos campos: pagos, comentarios,
+     historial, agendas cerradas
+   · API.clientes y API.historial expuestos para el admin
    ================================================================ */
 
-// ══════════════════════════════════════════════════════════════════
-// CONFIGURACIÓN SUPABASE
-// ══════════════════════════════════════════════════════════════════
-
-const SUPABASE_URL = 'https://znitsnhfesbapyobcwvo.supabase.co';  // ← Reemplaza (mantén las comillas)
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpuaXRzbmhmZXNiYXB5b2Jjd3ZvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU4NDAyNzgsImV4cCI6MjA5MTQxNjI3OH0.ThKUoM5ojRzINh_ItH7Mvp-sBb8on--xG8iCTDgTLK0';  // ← Reemplaza con tu anon key (mantén las comillas)
-
-// Token para acciones admin (cámbialo por algo secreto, ENTRE COMILLAS)
-const ADMIN_TOKEN = 'barberia-pro-2025-secret';
-
-// ══════════════════════════════════════════════════════════════════
-// CONFIGURACIÓN DEL NEGOCIO
-// ══════════════════════════════════════════════════════════════════
-
-const CONFIG = {
-  nombre:     'Barbería Pro',
-  email:      'voycontigo.licencia@gmail.com',
-  telefono:   '+56 9 9984 9782',
-  direccion:  'Av. Irarrázaval 4665, local D, Ñuñoa',
-  horario:    'Lun–Sáb: 9:00 – 20:00',
-  whatsapp:   'https://wa.me/56999849782',
-  instagram:  'https://instagram.com/barberiapro',
-  mapsUrl:    'https://maps.app.goo.gl/v8yUUogPGQsPc5aX7',
-  lat:        -33.4569,
-  lng:        -70.6483,
-  timezone:   'America/Santiago',
-  
-  // Horarios del negocio
-  horaApertura: 9,
-  horaCierre:   20,
-  slotMinutos:  15,
-  
-  // Logo (opcional - sube a postimg.cc o similar)
-  logoUrl: ''
-};
-
-// Estados de reserva
-const ESTADOS = {
-  CONFIRMADA:  'Confirmada',
-  CANCELADA:   'Cancelada',
-  COMPLETADA:  'Completada',
-  PENDIENTE:   'Pendiente'
-};
-
-// ══════════════════════════════════════════════════════════════════
-// INICIALIZACIÓN DEL CLIENTE SUPABASE
-// ══════════════════════════════════════════════════════════════════
-
-// Verificar que la librería está cargada
-if (typeof supabase === 'undefined') {
-  console.error('❌ Supabase SDK no cargado. Asegúrate de incluir el script antes de este archivo.');
+// ── REQUIERE QUE window.TENANT esté cargado ──
+if (!window.TENANT) {
+  throw new Error('Carga tenant.config.js ANTES que este archivo');
 }
 
-// Crear cliente (usando nombre diferente para evitar colisión)
+// ── CONFIGURACIÓN SUPABASE ──
+// Edita estos dos valores con los de tu proyecto Supabase
+const SUPABASE_URL = 'https://zvpcxuvoyotilvmaagqg.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp2cGN4dXZveW90aWx2bWFhZ3FnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU5MjE0ODQsImV4cCI6MjA5MTQ5NzQ4NH0.LpmnuBfDd2p73R4T1nQXQMMcP7xjKs-DoeF4NSY1xIA';
+
+if (typeof supabase === 'undefined') {
+  console.error('❌ Carga el SDK de Supabase ANTES que este archivo');
+}
+
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-console.log('✅ Supabase configurado:', SUPABASE_URL);
+// ── EXPORTS GLOBALES ──
+window.db        = db;
+window.SUPABASE_URL = SUPABASE_URL;
+window.CONFIG    = window.TENANT;          // alias retro-compat
+window.ESTADOS   = window.TENANT.estados;
 
 // ══════════════════════════════════════════════════════════════════
-// API - SERVICIOS
+// API
 // ══════════════════════════════════════════════════════════════════
 
 const API = {
@@ -79,45 +43,44 @@ const API = {
   // ─────────────────────────────────────────────────────────────────
   // SERVICIOS
   // ─────────────────────────────────────────────────────────────────
-  
   async getServicios() {
     try {
       const { data, error } = await db
         .from('servicios')
         .select('*')
         .eq('activo', true)
+        .order('orden', { ascending: true })
         .order('categoria', { ascending: true });
       
       if (error) throw error;
       
-      // Mapear nombres de columnas para compatibilidad
       return data.map(s => ({
-        id:           s.id,
-        nombre:       s.nombre,
-        duracion:     s.duracion_min,
-        precio:       s.precio,
-        categoria:    s.categoria,
+        id:            s.id,
+        nombre:        s.nombre,
+        duracion:      s.duracion_min,
+        precio:        s.precio,
+        categoria:     s.categoria,
         requiereSkill: s.requiere_skill || '',
-        esSesion:     s.es_sesion,
-        maxSesiones:  s.max_sesiones,
-        descripcion:  s.descripcion
+        esSesion:      s.es_sesion,
+        maxSesiones:   s.max_sesiones,
+        descripcion:   s.descripcion
       }));
     } catch (e) {
-      console.error('Error getServicios:', e);
+      console.error('getServicios:', e);
       return [];
     }
   },
   
   // ─────────────────────────────────────────────────────────────────
-  // EMPLEADOS
+  // EMPLEADOS / PROFESIONALES
   // ─────────────────────────────────────────────────────────────────
-  
   async getEmpleados() {
     try {
       const { data, error } = await db
         .from('empleados')
         .select('*')
         .eq('activo', true)
+        .order('orden', { ascending: true })
         .order('nombre', { ascending: true });
       
       if (error) throw error;
@@ -126,14 +89,14 @@ const API = {
         id:          e.id,
         nombre:      e.nombre,
         email:       e.email,
+        telefono:    e.telefono || '',
         skills:      e.skills || [],
-        activo:      e.activo,
         color:       e.color || '#6B7280',
         foto:        e.foto_url || '',
         descripcion: e.descripcion || ''
       }));
     } catch (e) {
-      console.error('Error getEmpleados:', e);
+      console.error('getEmpleados:', e);
       return [];
     }
   },
@@ -141,189 +104,164 @@ const API = {
   // ─────────────────────────────────────────────────────────────────
   // DISPONIBILIDAD
   // ─────────────────────────────────────────────────────────────────
-  
   async getDisponibilidad(fecha, servicioID) {
     try {
-      // 1. Obtener servicio
       const servicios = await this.getServicios();
       const servicio = servicios.find(s => s.id === servicioID);
       if (!servicio) return { ok: false, error: 'Servicio no encontrado' };
       
-      // 2. Obtener empleados (filtrar por skill si es necesario)
       let empleados = await this.getEmpleados();
       if (servicio.requiereSkill) {
-        empleados = empleados.filter(e => 
-          e.skills.includes(servicio.requiereSkill)
-        );
+        empleados = empleados.filter(e => e.skills.includes(servicio.requiereSkill));
       }
       
-      // 3. Calcular día de la semana
       const fechaObj = new Date(fecha + 'T12:00:00');
       const diaSemana = fechaObj.getDay();
       
-      // 4. Obtener horarios de todos los empleados para ese día
-      const { data: horarios, error: errHorarios } = await db
-        .from('horarios')
-        .select('*')
-        .eq('dia_semana', diaSemana)
-        .eq('disponible', true);
+      // horarios + reservas + agendas cerradas en paralelo
+      const [horariosRes, reservasRes, cerradasRes] = await Promise.all([
+        db.from('horarios').select('*').eq('dia_semana', diaSemana).eq('disponible', true),
+        db.from('reservas').select('*').eq('fecha', fecha).neq('estado', window.TENANT.estados.CANCELADA),
+        db.from('agendas_cerradas').select('*').eq('fecha', fecha).eq('activo', true)
+      ]);
       
-      if (errHorarios) throw errHorarios;
+      if (horariosRes.error)  throw horariosRes.error;
+      if (reservasRes.error)  throw reservasRes.error;
+      if (cerradasRes.error)  throw cerradasRes.error;
       
-      // 5. Obtener reservas activas para esa fecha
-      const { data: reservas, error: errReservas } = await db
-        .from('reservas')
-        .select('*')
-        .eq('fecha', fecha)
-        .neq('estado', ESTADOS.CANCELADA);
+      const horarios = horariosRes.data || [];
+      const reservas = reservasRes.data || [];
+      const cerradas = cerradasRes.data || [];
       
-      if (errReservas) throw errReservas;
-      
-      // 6. Calcular slots disponibles para cada empleado
       const resultado = {};
-      
       for (const emp of empleados) {
         const horario = horarios.find(h => h.empleado_id === emp.id);
         if (!horario) continue;
         
+        // Si el negocio entero está cerrado o este empleado lo está
+        const cerradoEmp = cerradas.filter(c => !c.empleado_id || c.empleado_id === emp.id);
+        const cerradoTodoElDia = cerradoEmp.some(c => !c.hora_inicio);
+        if (cerradoTodoElDia) {
+          resultado[emp.id] = { empleado: emp, slots: [], hayDisponibilidad: false, cerrado: true };
+          continue;
+        }
+        
         const reservasEmp = reservas.filter(r => r.empleado_id === emp.id);
         const slots = this._calcularSlots(
-          horario.hora_inicio,
-          horario.hora_fin,
-          servicio.duracion,
-          reservasEmp,
-          fecha  // ← Pasar fecha para filtrar horas pasadas
+          horario.hora_inicio, horario.hora_fin,
+          servicio.duracion, reservasEmp, cerradoEmp, fecha
         );
         
         resultado[emp.id] = {
           empleado: emp,
-          slots: slots,
+          slots,
           hayDisponibilidad: slots.some(s => s.disponible)
         };
       }
       
       return { ok: true, servicio, fecha, empleados: resultado };
-      
     } catch (e) {
-      console.error('Error getDisponibilidad:', e);
+      console.error('getDisponibilidad:', e);
       return { ok: false, error: e.message };
     }
   },
   
-  // Calcular slots disponibles
-  // fecha: string 'YYYY-MM-DD' para filtrar horas pasadas si es hoy
-  _calcularSlots(horaInicio, horaFin, duracionServicio, reservas, fecha) {
+  _calcularSlots(horaInicio, horaFin, duracionServicio, reservas, cerradas, fecha) {
     const slots = [];
     const inicio = this._horaAMinutos(horaInicio);
-    const fin = this._horaAMinutos(horaFin);
+    const fin    = this._horaAMinutos(horaFin);
     
-    // Calcular hora actual si es hoy (para filtrar slots pasados)
     const ahora = new Date();
     const hoyStr = ahora.toISOString().split('T')[0];
     const esHoy = fecha === hoyStr;
     const minutosAhora = esHoy ? (ahora.getHours() * 60 + ahora.getMinutes()) : 0;
     
-    for (let mins = inicio; mins < fin; mins += CONFIG.slotMinutos) {
+    for (let mins = inicio; mins < fin; mins += window.TENANT.slotMinutos) {
       const slotInicio = this._minutosAHora(mins);
-      const slotFin = this._minutosAHora(mins + duracionServicio);
+      const slotFin    = this._minutosAHora(mins + duracionServicio);
       
-      // Verificar que el slot cabe en el horario
       if (mins + duracionServicio > fin) break;
       
-      // ⏰ BUG FIX: Si es hoy, filtrar horas que ya pasaron
       if (esHoy && mins <= minutosAhora) {
-        slots.push({
-          horaInicio: slotInicio,
-          horaFin: slotFin,
-          disponible: false,
-          pasado: true
-        });
+        slots.push({ horaInicio: slotInicio, horaFin: slotFin, disponible: false, pasado: true });
         continue;
       }
       
-      // Verificar conflictos con reservas existentes
-      const libre = !reservas.some(r => {
-        const rInicio = this._horaAMinutos(r.hora_inicio);
-        const rFin = this._horaAMinutos(r.hora_fin);
-        return mins < rFin && (mins + duracionServicio) > rInicio;
+      // conflicto con reserva existente
+      const ocupadoReserva = reservas.some(r => {
+        const ri = this._horaAMinutos(r.hora_inicio);
+        const rf = this._horaAMinutos(r.hora_fin);
+        return mins < rf && (mins + duracionServicio) > ri;
+      });
+      
+      // conflicto con agenda cerrada parcial
+      const ocupadoCerrada = cerradas.some(c => {
+        if (!c.hora_inicio) return false;
+        const ci = this._horaAMinutos(c.hora_inicio);
+        const cf = this._horaAMinutos(c.hora_fin || c.hora_inicio);
+        return mins < cf && (mins + duracionServicio) > ci;
       });
       
       slots.push({
         horaInicio: slotInicio,
         horaFin: slotFin,
-        disponible: libre
+        disponible: !ocupadoReserva && !ocupadoCerrada
       });
     }
-    
     return slots;
   },
   
   _horaAMinutos(hora) {
     if (!hora) return 0;
-    const str = String(hora).replace(/:\d{2}$/, ''); // Quitar segundos si hay
+    const str = String(hora).replace(/:\d{2}$/, '');
     const [h, m] = str.split(':').map(Number);
     return h * 60 + (m || 0);
   },
   
   _minutosAHora(mins) {
-    const h = Math.floor(mins / 60);
-    const m = mins % 60;
+    const h = Math.floor(mins / 60), m = mins % 60;
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
   },
   
   // ─────────────────────────────────────────────────────────────────
-  // CREAR RESERVA
+  // CREAR RESERVA (modo híbrido)
   // ─────────────────────────────────────────────────────────────────
-  
   async crearReserva(payload) {
     try {
-      // 1. Validar payload
       const validacion = this._validarPayload(payload);
       if (validacion) return { ok: false, error: validacion };
       
-      // 2. Obtener servicio y empleado
       const servicios = await this.getServicios();
       const servicio = servicios.find(s => s.id === payload.servicioID);
       if (!servicio) return { ok: false, error: 'Servicio no encontrado' };
       
       const empleados = await this.getEmpleados();
       const empleado = empleados.find(e => e.id === payload.empleadoID);
-      if (!empleado) return { ok: false, error: 'Barbero no encontrado' };
+      if (!empleado) return { ok: false, error: window.TENANT.t('profesionalCap') + ' no encontrado' };
       
-      // 3. Verificar skill
       if (servicio.requiereSkill && !empleado.skills.includes(servicio.requiereSkill)) {
-        return { ok: false, error: 'El barbero seleccionado no realiza este servicio' };
+        return { ok: false, error: 'El ' + window.TENANT.profesionalLabel + ' seleccionado no realiza este servicio' };
       }
       
-      // 4. Verificar disponibilidad (doble check)
-      const horaFin = this._minutosAHora(
-        this._horaAMinutos(payload.horaInicio) + servicio.duracion
-      );
+      const horaFin = this._minutosAHora(this._horaAMinutos(payload.horaInicio) + servicio.duracion);
       
-      // BUG FIX: Traer todas las reservas del día y verificar solapamiento en JS
-      // La sintaxis OR de Supabase no funciona bien para rangos
-      const { data: reservasDelDia } = await db
+      // Doble check de solapamiento
+      const { data: existentes } = await db
         .from('reservas')
         .select('id, hora_inicio, hora_fin')
         .eq('empleado_id', payload.empleadoID)
         .eq('fecha', payload.fecha)
-        .neq('estado', ESTADOS.CANCELADA);
+        .neq('estado', window.TENANT.estados.CANCELADA);
       
-      // Verificar solapamiento: A empieza antes de que B termine Y A termina después de que B empiece
       const nuevaInicio = this._horaAMinutos(payload.horaInicio);
       const nuevaFin = this._horaAMinutos(horaFin);
-      
-      const hayConflicto = (reservasDelDia || []).some(r => {
-        const existeInicio = this._horaAMinutos(r.hora_inicio);
-        const existeFin = this._horaAMinutos(r.hora_fin);
-        return nuevaInicio < existeFin && nuevaFin > existeInicio;
+      const conflicto = (existentes || []).some(r => {
+        const ei = this._horaAMinutos(r.hora_inicio);
+        const ef = this._horaAMinutos(r.hora_fin);
+        return nuevaInicio < ef && nuevaFin > ei;
       });
+      if (conflicto) return { ok: false, error: 'El horario ya no está disponible' };
       
-      if (hayConflicto) {
-        return { ok: false, error: 'El horario ya no está disponible. Elige otro.' };
-      }
-      
-      // 5. Insertar reserva
       const reservaData = {
         nombre_cliente:   payload.nombre.trim(),
         email:            payload.email.toLowerCase().trim(),
@@ -337,10 +275,10 @@ const API = {
         hora_fin:         horaFin,
         duracion_min:     servicio.duracion,
         precio:           servicio.precio,
-        notas:            payload.notas || '',
+        notas_cliente:    payload.notas || '',
         sesion_num:       parseInt(payload.sesionNum) || 1,
         sesiones_totales: servicio.esSesion ? servicio.maxSesiones : 1,
-        estado:           ESTADOS.CONFIRMADA
+        estado:           window.TENANT.estados.CONFIRMADA
       };
       
       const { data, error } = await db
@@ -351,36 +289,15 @@ const API = {
       
       if (error) throw error;
       
-      // 6. Actualizar/crear cliente en CRM
-      await this._upsertCliente(payload.nombre, payload.email, payload.telefono, servicio.precio);
+      // upsert cliente CRM
+      this._upsertCliente(data).catch(e => console.warn('CRM:', e));
       
-      // 7. Enviar notificaciones (via Edge Function)
-      this._enviarNotificaciones('nueva_reserva', data);
+      // dispara webhook al Apps Script (modo híbrido)
+      this._dispatchAppsScript('nuevaReserva', data);
       
-      // 8. Formatear respuesta para compatibilidad
-      const reserva = {
-        id:              data.id,
-        nombre:          data.nombre_cliente,
-        email:           data.email,
-        telefono:        data.telefono,
-        servicioID:      data.servicio_id,
-        servicioNombre:  data.servicio_nombre,
-        empleadoID:      data.empleado_id,
-        empleadoNombre:  data.empleado_nombre,
-        fecha:           data.fecha,
-        horaInicio:      data.hora_inicio,
-        horaFin:         data.hora_fin,
-        duracion:        data.duracion_min,
-        precio:          data.precio,
-        notas:           data.notas,
-        sesionNum:       data.sesion_num,
-        sesionesTotales: data.sesiones_totales
-      };
-      
-      return { ok: true, reservaID: data.id, reserva };
-      
+      return { ok: true, reservaID: data.id, codigo: data.codigo, reserva: data };
     } catch (e) {
-      console.error('Error crearReserva:', e);
+      console.error('crearReserva:', e);
       return { ok: false, error: 'Error al crear la reserva: ' + e.message };
     }
   },
@@ -390,176 +307,347 @@ const API = {
     if (!p.nombre || p.nombre.trim().length < 2) return 'Nombre inválido';
     if (!p.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(p.email)) return 'Email inválido';
     if (!p.servicioID) return 'Servicio requerido';
-    if (!p.empleadoID) return 'Barbero requerido';
+    if (!p.empleadoID) return window.TENANT.t('profesionalCap') + ' requerido';
     if (!p.fecha) return 'Fecha requerida';
     if (!p.horaInicio) return 'Hora requerida';
-    
     const fechaReserva = new Date(p.fecha + 'T' + p.horaInicio + ':00');
-    if (fechaReserva < new Date()) return 'No puedes reservar en una fecha pasada';
-    
+    if (fechaReserva < new Date()) return 'No puedes reservar en fecha pasada';
     return null;
   },
   
   // ─────────────────────────────────────────────────────────────────
-  // CANCELAR RESERVA
+  // CANCELAR / REAGENDAR / CAMBIAR ESTADO
   // ─────────────────────────────────────────────────────────────────
-  
-  async cancelarReserva(reservaID, canceladoPor = 'cliente') {
+  async cancelarReserva(reservaID, motivo, canceladoPor = 'cliente') {
     try {
-      // 1. Verificar que existe
-      const { data: reserva, error: errBuscar } = await db
-        .from('reservas')
-        .select('*')
-        .eq('id', reservaID)
-        .single();
-      
-      if (errBuscar || !reserva) {
-        return { ok: false, error: 'Reserva no encontrada' };
+      const { data: reserva } = await db.from('reservas').select('*').eq('id', reservaID).single();
+      if (!reserva) return { ok: false, error: 'Reserva no encontrada' };
+      if (reserva.estado === window.TENANT.estados.CANCELADA) {
+        return { ok: false, error: 'Ya está cancelada' };
       }
       
-      if (reserva.estado === ESTADOS.CANCELADA) {
-        return { ok: false, error: 'La reserva ya está cancelada' };
-      }
-      
-      // 2. Actualizar estado
-      const { error: errUpdate } = await db
+      const { error } = await db
         .from('reservas')
-        .update({ 
-          estado: ESTADOS.CANCELADA,
+        .update({
+          estado: window.TENANT.estados.CANCELADA,
+          motivo_cancelacion: motivo || '',
           cancelado_por: canceladoPor
         })
         .eq('id', reservaID);
       
-      if (errUpdate) throw errUpdate;
+      if (error) throw error;
       
-      // 3. Enviar notificaciones
-      this._enviarNotificaciones('cancelacion', reserva);
+      reserva.motivo_cancelacion = motivo;
+      this._dispatchAppsScript('cancelacion', reserva);
       
       return { ok: true };
-      
     } catch (e) {
-      console.error('Error cancelarReserva:', e);
+      console.error('cancelarReserva:', e);
+      return { ok: false, error: e.message };
+    }
+  },
+  
+  async reagendarReserva(reservaID, nuevaFecha, nuevaHora, motivo) {
+    try {
+      const { data: reserva } = await db.from('reservas').select('*').eq('id', reservaID).single();
+      if (!reserva) return { ok: false, error: 'Reserva no encontrada' };
+      
+      const horaFin = this._minutosAHora(this._horaAMinutos(nuevaHora) + reserva.duracion_min);
+      
+      // verificar solapamiento en el nuevo horario
+      const { data: existentes } = await db
+        .from('reservas')
+        .select('id, hora_inicio, hora_fin')
+        .eq('empleado_id', reserva.empleado_id)
+        .eq('fecha', nuevaFecha)
+        .neq('id', reservaID)
+        .neq('estado', window.TENANT.estados.CANCELADA);
+      
+      const ni = this._horaAMinutos(nuevaHora), nf = this._horaAMinutos(horaFin);
+      const conflicto = (existentes || []).some(r => {
+        const ei = this._horaAMinutos(r.hora_inicio), ef = this._horaAMinutos(r.hora_fin);
+        return ni < ef && nf > ei;
+      });
+      if (conflicto) return { ok: false, error: 'El nuevo horario está ocupado' };
+      
+      const anterior = {
+        fecha: reserva.fecha,
+        hora_inicio: reserva.hora_inicio,
+        calendar_event_id: reserva.calendar_event_id
+      };
+      
+      const { data: actualizada, error } = await db
+        .from('reservas')
+        .update({
+          fecha:             nuevaFecha,
+          hora_inicio:       nuevaHora,
+          hora_fin:          horaFin,
+          fecha_anterior:    reserva.fecha,
+          hora_anterior:     reserva.hora_inicio,
+          motivo_reagendado: motivo || '',
+          calendar_event_id: ''
+        })
+        .eq('id', reservaID)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      
+      this._dispatchAppsScript('reagendado', actualizada, anterior);
+      return { ok: true, reserva: actualizada };
+    } catch (e) {
+      console.error('reagendarReserva:', e);
+      return { ok: false, error: e.message };
+    }
+  },
+  
+  async cambiarEstado(reservaID, nuevoEstado, comentario = '', cambiadoPor = 'admin') {
+    try {
+      const { data, error } = await db
+        .from('reservas')
+        .update({
+          estado: nuevoEstado,
+          comentario_admin: comentario,
+          cancelado_por: cambiadoPor
+        })
+        .eq('id', reservaID)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      
+      if (nuevoEstado === window.TENANT.estados.COMPLETADA) {
+        this._dispatchAppsScript('completada', data);
+      }
+      return { ok: true, reserva: data };
+    } catch (e) {
+      console.error('cambiarEstado:', e);
       return { ok: false, error: e.message };
     }
   },
   
   // ─────────────────────────────────────────────────────────────────
-  // CRM - CLIENTES
+  // PAGO Y RECIBO
   // ─────────────────────────────────────────────────────────────────
-  
-  async _upsertCliente(nombre, email, telefono, precio) {
+  async registrarPago(reservaID, metodoPago, montoPagado) {
     try {
-      email = email.toLowerCase().trim();
-      
-      // Verificar si existe
-      const { data: cliente } = await db
-        .from('clientes')
-        .select('*')
-        .eq('email', email)
+      const { data, error } = await db
+        .from('reservas')
+        .update({
+          metodo_pago: metodoPago,
+          monto_pagado: montoPagado,
+          pagado_at: new Date().toISOString(),
+          estado: window.TENANT.estados.COMPLETADA
+        })
+        .eq('id', reservaID)
+        .select()
         .single();
       
-      if (cliente) {
-        // Actualizar existente
-        const totalReservas = (cliente.total_reservas || 0) + 1;
-        const montoTotal = (cliente.monto_total || 0) + precio;
-        const etiqueta = totalReservas >= 10 ? '⭐ VIP' : 
-                        totalReservas >= 3 ? '🔁 Frecuente' : '🆕 Nuevo';
-        
-        await db
-          .from('clientes')
-          .update({
-            total_reservas: totalReservas,
-            monto_total: montoTotal,
-            etiqueta: etiqueta,
-            ultima_visita: new Date().toISOString()
-          })
-          .eq('email', email);
-      } else {
-        // Crear nuevo
-        await db
-          .from('clientes')
-          .insert({
-            email,
-            nombre,
-            telefono: telefono || '',
-            total_reservas: 1,
-            monto_total: precio,
-            etiqueta: '🆕 Nuevo',
-            ultima_visita: new Date().toISOString()
-          });
-      }
+      if (error) throw error;
+      this._dispatchAppsScript('completada', data);
+      return { ok: true, reserva: data };
     } catch (e) {
-      console.warn('Error upsertCliente:', e);
+      console.error('registrarPago:', e);
+      return { ok: false, error: e.message };
     }
   },
   
-  // ─────────────────────────────────────────────────────────────────
-  // NOTIFICACIONES (llama a Edge Function)
-  // ─────────────────────────────────────────────────────────────────
-  
-  async _enviarNotificaciones(tipo, reserva) {
+  async agregarComentario(reservaID, comentario) {
     try {
-      // Las notificaciones se manejan via Edge Function
-      // para mantener seguras las credenciales de Slack/Email
-      await fetch(`${SUPABASE_URL}/functions/v1/notificaciones`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
-        },
-        body: JSON.stringify({ tipo, reserva, config: CONFIG })
-      });
+      const { data, error } = await db
+        .from('reservas')
+        .update({ comentario_admin: comentario })
+        .eq('id', reservaID)
+        .select()
+        .single();
+      if (error) throw error;
+      return { ok: true, reserva: data };
     } catch (e) {
-      console.warn('Error enviando notificaciones:', e);
-      // No fallar la reserva si las notificaciones fallan
+      return { ok: false, error: e.message };
     }
   },
   
   // ─────────────────────────────────────────────────────────────────
-  // FUNCIONES ADMIN (requieren token)
+  // CLIENTES (CRM)
   // ─────────────────────────────────────────────────────────────────
+  async _upsertCliente(reserva) {
+    const email = reserva.email.toLowerCase().trim();
+    const { data: existente } = await db.from('clientes').select('*').eq('email', email).maybeSingle();
+    
+    if (existente) {
+      const total = (existente.total_reservas || 0) + 1;
+      const monto = (existente.monto_total || 0) + (reserva.precio || 0);
+      const etiqueta = total >= 10 ? '⭐ VIP' : total >= 3 ? '🔁 Frecuente' : '🆕 Nuevo';
+      
+      await db.from('clientes').update({
+        total_reservas: total,
+        monto_total: monto,
+        etiqueta,
+        ultima_visita: new Date().toISOString()
+      }).eq('email', email);
+      
+      // vincular reserva al cliente
+      await db.from('reservas').update({ cliente_id: existente.id }).eq('id', reserva.id);
+    } else {
+      const { data: nuevo } = await db.from('clientes').insert({
+        email,
+        nombre: reserva.nombre_cliente,
+        telefono: reserva.telefono || '',
+        total_reservas: 1,
+        monto_total: reserva.precio || 0,
+        etiqueta: '🆕 Nuevo',
+        ultima_visita: new Date().toISOString()
+      }).select().single();
+      
+      if (nuevo) await db.from('reservas').update({ cliente_id: nuevo.id }).eq('id', reserva.id);
+    }
+  },
   
+  async getClientes(filtro = '') {
+    try {
+      let query = db.from('clientes').select('*').order('ultima_visita', { ascending: false });
+      if (filtro) {
+        query = query.or(`nombre.ilike.%${filtro}%,email.ilike.%${filtro}%,telefono.ilike.%${filtro}%`);
+      }
+      const { data, error } = await query.limit(200);
+      if (error) throw error;
+      return data || [];
+    } catch (e) {
+      console.error('getClientes:', e);
+      return [];
+    }
+  },
+  
+  async getHistorialCliente(email) {
+    try {
+      const { data, error } = await db
+        .from('reservas')
+        .select('*')
+        .eq('email', email.toLowerCase().trim())
+        .order('fecha', { ascending: false })
+        .limit(100);
+      if (error) throw error;
+      return data || [];
+    } catch (e) {
+      console.error('getHistorialCliente:', e);
+      return [];
+    }
+  },
+  
+  async actualizarCliente(id, cambios) {
+    try {
+      const { data, error } = await db
+        .from('clientes').update(cambios).eq('id', id).select().single();
+      if (error) throw error;
+      return { ok: true, cliente: data };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  },
+  
+  // ─────────────────────────────────────────────────────────────────
+  // AGENDAS CERRADAS
+  // ─────────────────────────────────────────────────────────────────
+  async cerrarAgenda(payload) {
+    // payload: { fecha, hora_inicio?, hora_fin?, empleado_id?, motivo }
+    try {
+      const { data, error } = await db
+        .from('agendas_cerradas')
+        .insert({ ...payload, activo: true })
+        .select()
+        .single();
+      if (error) throw error;
+      return { ok: true, cerrada: data };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  },
+  
+  async reabrirAgenda(id) {
+    try {
+      const { error } = await db
+        .from('agendas_cerradas')
+        .update({
+          activo: false,
+          reopened_at: new Date().toISOString(),
+          reopened_by: 'admin'
+        })
+        .eq('id', id);
+      if (error) throw error;
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  },
+  
+  async getAgendasCerradas(desde, hasta) {
+    try {
+      const { data, error } = await db
+        .from('agendas_cerradas')
+        .select('*')
+        .gte('fecha', desde)
+        .lte('fecha', hasta)
+        .order('fecha', { ascending: false });
+      if (error) throw error;
+      return data || [];
+    } catch (e) {
+      return [];
+    }
+  },
+  
+  // ─────────────────────────────────────────────────────────────────
+  // HISTORIAL DE CAMBIOS
+  // ─────────────────────────────────────────────────────────────────
+  async getHistorialReserva(reservaID) {
+    try {
+      const { data, error } = await db
+        .from('historial_reservas')
+        .select('*')
+        .eq('reserva_id', reservaID)
+        .order('cambiado_at', { ascending: false });
+      if (error) throw error;
+      return data || [];
+    } catch (e) {
+      return [];
+    }
+  },
+  
+  // ─────────────────────────────────────────────────────────────────
+  // DASHBOARD / REPORTES
+  // ─────────────────────────────────────────────────────────────────
   async getDashboard() {
     try {
       const hoy = new Date().toISOString().split('T')[0];
       
-      // Reservas de hoy
-      const { data: reservasHoy } = await db
-        .from('reservas')
-        .select('*')
-        .eq('fecha', hoy)
-        .neq('estado', ESTADOS.CANCELADA)
-        .order('hora_inicio', { ascending: true });
+      const [reservasHoyRes, proximasRes, clientesRes] = await Promise.all([
+        db.from('reservas').select('*').eq('fecha', hoy)
+          .neq('estado', window.TENANT.estados.CANCELADA)
+          .order('hora_inicio', { ascending: true }),
+        db.from('reservas').select('*').gte('fecha', hoy)
+          .neq('estado', window.TENANT.estados.CANCELADA)
+          .order('fecha', { ascending: true })
+          .order('hora_inicio', { ascending: true })
+          .limit(20),
+        db.from('clientes').select('*', { count: 'exact', head: true })
+      ]);
       
-      // Próximas reservas
-      const { data: proximas } = await db
-        .from('reservas')
-        .select('*')
-        .gte('fecha', hoy)
-        .neq('estado', ESTADOS.CANCELADA)
-        .order('fecha', { ascending: true })
-        .order('hora_inicio', { ascending: true })
-        .limit(20);
-      
-      // Empleados y servicios
       const empleados = await this.getEmpleados();
       const servicios = await this.getServicios();
       
-      // Stats
-      const stats = this._calcularStats(reservasHoy || []);
+      const stats = this._calcularStats(reservasHoyRes.data || []);
       
       return {
         ok: true,
         fecha: hoy,
         stats,
-        reservasHoy: this._formatearReservas(reservasHoy || []),
-        proximas: this._formatearReservas(proximas || []),
+        reservasHoy: reservasHoyRes.data || [],
+        proximas: proximasRes.data || [],
         empleados,
-        servicios
+        servicios,
+        totalClientes: clientesRes.count || 0
       };
-      
     } catch (e) {
-      console.error('Error getDashboard:', e);
+      console.error('getDashboard:', e);
       return { ok: false, error: e.message };
     }
   },
@@ -567,73 +655,52 @@ const API = {
   _calcularStats(reservas) {
     return {
       totalHoy: reservas.length,
-      confirmadas: reservas.filter(r => r.estado === ESTADOS.CONFIRMADA).length,
-      completadas: reservas.filter(r => r.estado === ESTADOS.COMPLETADA).length,
-      canceladas: reservas.filter(r => r.estado === ESTADOS.CANCELADA).length,
+      confirmadas: reservas.filter(r => r.estado === window.TENANT.estados.CONFIRMADA).length,
+      completadas: reservas.filter(r => r.estado === window.TENANT.estados.COMPLETADA).length,
+      canceladas:  reservas.filter(r => r.estado === window.TENANT.estados.CANCELADA).length,
+      noShow:      reservas.filter(r => r.estado === window.TENANT.estados.NO_SHOW).length,
       ingresoEstimado: reservas
-        .filter(r => r.estado !== ESTADOS.CANCELADA)
-        .reduce((sum, r) => sum + (r.precio || 0), 0)
+        .filter(r => r.estado !== window.TENANT.estados.CANCELADA)
+        .reduce((s, r) => s + (r.monto_pagado || r.precio || 0), 0)
     };
   },
   
-  _formatearReservas(reservas) {
-    return reservas.map(r => ({
-      id:              r.id,
-      nombre:          r.nombre_cliente,
-      email:           r.email,
-      telefono:        r.telefono,
-      servicioID:      r.servicio_id,
-      servicioNombre:  r.servicio_nombre,
-      empleadoID:      r.empleado_id,
-      empleadoNombre:  r.empleado_nombre,
-      fecha:           r.fecha,
-      horaInicio:      r.hora_inicio,
-      horaFin:         r.hora_fin,
-      duracion:        r.duracion_min,
-      estado:          r.estado,
-      precio:          r.precio,
-      notas:           r.notas
-    }));
-  },
-  
   async getReservasPorDia(fecha) {
-    try {
-      const { data, error } = await db
-        .from('reservas')
-        .select('*')
-        .eq('fecha', fecha)
-        .neq('estado', ESTADOS.CANCELADA)
-        .order('hora_inicio', { ascending: true });
-      
-      if (error) throw error;
-      return this._formatearReservas(data || []);
-    } catch (e) {
-      console.error('Error getReservasPorDia:', e);
-      return [];
-    }
+    const { data } = await db
+      .from('reservas').select('*').eq('fecha', fecha)
+      .order('hora_inicio', { ascending: true });
+    return data || [];
   },
   
-  async actualizarEstado(reservaID, estado) {
-    try {
-      const { error } = await db
-        .from('reservas')
-        .update({ estado })
-        .eq('id', reservaID);
-      
-      if (error) throw error;
-      return { ok: true };
-    } catch (e) {
-      console.error('Error actualizarEstado:', e);
-      return { ok: false, error: e.message };
+  // ─────────────────────────────────────────────────────────────────
+  // DISPATCH AL APPS SCRIPT (modo híbrido)
+  // ─────────────────────────────────────────────────────────────────
+  _dispatchAppsScript(accion, reserva, anterior = null) {
+    const url = window.TENANT.appsScriptUrl;
+    if (!url || url.includes('REEMPLAZAR')) {
+      console.warn('TENANT.appsScriptUrl no configurada');
+      return Promise.resolve();
     }
-  },
-  
-  async cancelarAdmin(reservaID) {
-    return this.cancelarReserva(reservaID, 'admin');
+    
+    const body = JSON.stringify({ accion, reserva, anterior });
+    
+    // fire-and-forget con keepalive (sobrevive a la navegación)
+    return fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },  // text/plain evita CORS preflight
+      body,
+      keepalive: true,
+      mode: 'no-cors'                              // no leemos respuesta
+    }).catch(e => {
+      console.warn('AS dispatch falló:', e.message);
+      // retry en background una vez
+      setTimeout(() => {
+        fetch(url, { method: 'POST', body, mode: 'no-cors', keepalive: true }).catch(() => {});
+      }, 2000);
+    });
   }
 };
 
-// Hacer disponible globalmente
 window.API = API;
-window.CONFIG = CONFIG;
-window.ESTADOS = ESTADOS;
+console.log('✅ Supabase + API listos para tenant:', window.TENANT.id);
+
